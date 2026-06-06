@@ -2,14 +2,14 @@ import { useState, useCallback } from "react";
 
 const DEFAULT_DEP_MATRIX = [
   [null, null, null, null, null, null],
-  [null, null, null, "-",  null, null],
-  [null, "-",  null, "-",  "-",  null],
-  [null, null, null, null, "-",  null],
-  ["+",  "-",  null, "-",  null, null],
-  [null, null, null, "-",  null, null],
+  [null, null, null, null, null, null],
+  [null, null, null, null, null, null],
+  [null, null, null, null, null, null],
+  [null, null, null, null, null, null],
+  [null, null, null, null, null, null],
 ];
 
-const DEFAULT_START = [2, 3, 4, 6, 6, 7];
+const DEFAULT_START = [2, 3, 4, 6, 6, 4];
 const DEFAULT_GOAL  = [4, 4, 4, 4, 4, 4];
 
 const PIN_COLORS = ["#e05c5c","#e08c3a","#d4c84a","#5cba6a","#4a9de0","#9b6ae0"];
@@ -260,9 +260,9 @@ export default function GothicLockPicker() {
             <table style={{ borderCollapse:"separate", borderSpacing:3 }}>
               <thead>
                 <tr>
-                  <th style={{ padding:"4px 10px 8px 4px", color:"#2a3a4a", fontSize:10, textAlign:"left", whiteSpace:"nowrap" }}>affected L ↓ · move L →</th>
+                  <th style={{ padding:"4px 10px 8px 4px", color:"#2a3a4a", fontSize:10, textAlign:"left", whiteSpace:"nowrap" }}>affected L ↓ · move X →</th>
                   {[0,1,2,3,4,5].map(p=>(
-                    <th key={p} style={{ width:CELL_W, textAlign:"center", padding:"4px 0 8px", color:PIN_COLORS[p], fontWeight:800, fontSize:13 }}>L{p+1}</th>
+                    <th key={p} style={{ width:CELL_W, textAlign:"center", padding:"4px 0 8px", color:PIN_COLORS[p], fontWeight:800, fontSize:13 }}>X{p+1}</th>
                   ))}
                 </tr>
               </thead>
