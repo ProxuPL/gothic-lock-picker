@@ -202,6 +202,17 @@ function DepCell({ value, onChange, isSelf, cellW }) {
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════════
 
+// Hide browser's native number-input spin buttons
+const _pinInputStyle = typeof document !== "undefined" && (() => {
+  const s = document.createElement("style");
+  s.textContent = `
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+    input[type=number] { -moz-appearance:textfield; }
+  `;
+  document.head.appendChild(s);
+})();
+
 export default function GothicLockPicker() {
   const [latchCount, setLatchCount] = useState(DEFAULT_LATCH_COUNT);
   const [startVals,  setStartVals]  = useState([...DEFAULT_START]);
@@ -324,17 +335,97 @@ export default function GothicLockPicker() {
         {/* STARTING POSITIONS */}
         <div style={sec}>
           <div style={secTitle}>📍 Starting pin positions</div>
-          <div style={{ display:"grid", gridTemplateColumns:`repeat(${latchCount},1fr)`, gap:8 }}>
-            {latches.map(i => (
-              <div key={i} style={{ textAlign:"center" }}>
-                <div style={{ color:PIN_COLORS[i], fontWeight:700, fontSize:11, marginBottom:4 }}>P{i+1}</div>
-                <div style={{ fontSize:22, fontWeight:800, marginBottom:6, color:startVals[i]===4?"#5cba6a":PIN_COLORS[i] }}>{startVals[i]}</div>
-                <input type="range" min={1} max={7} value={startVals[i]} onChange={e=>updateStart(i,e.target.value)} style={{ width:"100%", accentColor:PIN_COLORS[i], cursor:"pointer" }} />
-                <div style={{ display:"flex", justifyContent:"space-between", fontSize:9, color:"#3a4a5a", marginTop:2 }}>
-                  <span>1</span><span style={{color:startVals[i]===4?"#5cba6a":"#4a5a6a"}}>4</span><span>7</span>
+          <div style={{
+            display:"grid",
+            gridTemplateColumns: isMobile
+              ? `repeat(${Math.min(latchCount, 4)}, 1fr)`
+              : `repeat(${latchCount}, 1fr)`,
+            gap: isMobile ? 10 : 8,
+          }}>
+            {latches.map(i => {
+              const val = startVals[i];
+              const isGoal = val === 4;
+              const col = PIN_COLORS[i];
+              return (
+                <div key={i} style={{ textAlign:"center" }}>
+                  {/* Pin label */}
+                  <div style={{ color:col, fontWeight:700, fontSize:11, marginBottom:4 }}>P{i+1}</div>
+
+                  {/* Stepper + number input row */}
+                  <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:4, marginBottom:6 }}>
+                    <button
+                      onClick={() => updateStart(i, Math.max(1, val - 1))}
+                      disabled={val <= 1}
+                      style={{
+                        width: isMobile ? 28 : 22, height: isMobile ? 28 : 22,
+                        borderRadius:5, border:`1.5px solid ${val<=1?"#1a2a3a":"#2d4a6a"}`,
+                        background: val<=1?"#0a0e16":"#0d1a2e",
+                        color: val<=1?"#2a3a4a":"#7ab8f5",
+                        fontWeight:800, fontSize: isMobile ? 16 : 13, lineHeight:1,
+                        cursor: val<=1?"not-allowed":"pointer",
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                        fontFamily:"inherit", flexShrink:0,
+                        touchAction:"manipulation",
+                      }}
+                    >−</button>
+
+                    <input
+                      type="number"
+                      min={1} max={7}
+                      value={val}
+                      onChange={e => {
+                        const n = parseInt(e.target.value, 10);
+                        if (!isNaN(n) && n >= 1 && n <= 7) updateStart(i, n);
+                      }}
+                      style={{
+                        width: isMobile ? 44 : 34,
+                        height: isMobile ? 36 : 30,
+                        textAlign:"center",
+                        fontSize: isMobile ? 20 : 16,
+                        fontWeight:800,
+                        fontFamily:"inherit",
+                        background:"#080c14",
+                        border:`2px solid ${isGoal?"#2a6a2a":col+"55"}`,
+                        borderRadius:6,
+                        color: isGoal?"#5cba6a":col,
+                        outline:"none",
+                        MozAppearance:"textfield",
+                        WebkitAppearance:"none",
+                        padding:0,
+                      }}
+                    />
+
+                    <button
+                      onClick={() => updateStart(i, Math.min(7, val + 1))}
+                      disabled={val >= 7}
+                      style={{
+                        width: isMobile ? 28 : 22, height: isMobile ? 28 : 22,
+                        borderRadius:5, border:`1.5px solid ${val>=7?"#1a2a3a":"#2d4a6a"}`,
+                        background: val>=7?"#0a0e16":"#0d1a2e",
+                        color: val>=7?"#2a3a4a":"#7ab8f5",
+                        fontWeight:800, fontSize: isMobile ? 16 : 13, lineHeight:1,
+                        cursor: val>=7?"not-allowed":"pointer",
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                        fontFamily:"inherit", flexShrink:0,
+                        touchAction:"manipulation",
+                      }}
+                    >+</button>
+                  </div>
+
+                  {/* Slider */}
+                  <input
+                    type="range" min={1} max={7} value={val}
+                    onChange={e => updateStart(i, e.target.value)}
+                    style={{ width:"100%", accentColor:col, cursor:"pointer" }}
+                  />
+                  <div style={{ display:"flex", justifyContent:"space-between", fontSize:9, color:"#3a4a5a", marginTop:2 }}>
+                    <span>1</span>
+                    <span style={{ color:isGoal?"#5cba6a":"#4a5a6a" }}>4✓</span>
+                    <span>7</span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
