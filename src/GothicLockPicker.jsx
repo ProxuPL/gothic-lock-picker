@@ -337,10 +337,8 @@ export default function GothicLockPicker() {
           <div style={secTitle}>📍 Starting pin positions</div>
           <div style={{
             display:"grid",
-            gridTemplateColumns: isMobile
-              ? `repeat(${Math.min(latchCount, 4)}, 1fr)`
-              : `repeat(${latchCount}, 1fr)`,
-            gap: isMobile ? 10 : 8,
+            gridTemplateColumns: `repeat(auto-fill, minmax(90px, 1fr))`,
+            gap: 10,
           }}>
             {latches.map(i => {
               const val = startVals[i];
