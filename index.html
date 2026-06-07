@@ -4,10 +4,54 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>gothic-lock-picker</title>
+
+    <!-- ═══ SEO ═══════════════════════════════════════════════════════════ -->
+    <title>Gothic Lock Picker – Optimal Lock Solver for Gothic 1 Remake</title>
+    <meta name="description" content="Free tool to solve lock picking puzzles in Gothic 1 Remake. Enter your pin positions and latch dependencies to instantly get the shortest possible move sequence.">
+    <meta name="keywords" content="Gothic 1 Remake, lock picking, lock solver, Gothic Remake locks, lock puzzle solver, Gothic lock guide">
+    <link rel="canonical" href="https://gothic-lock-picker.vercel.app/">
+
+    <!-- ═══ OPEN GRAPH (Reddit, Discord, Facebook) ════════════════════════ -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://gothic-lock-picker.vercel.app/">
+    <meta property="og:title" content="Gothic Lock Picker – Optimal Lock Solver for Gothic 1 Remake">
+    <meta property="og:description" content="Stuck on a lock in Gothic 1 Remake? Enter your pin positions and dependencies — get the shortest move sequence instantly. Works on mobile too.">
+    <meta property="og:site_name" content="Gothic Lock Picker">
+
+    <!-- ═══ TWITTER / X ═══════════════════════════════════════════════════ -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Gothic Lock Picker – Gothic 1 Remake Solver">
+    <meta name="twitter:description" content="Free tool to find the optimal move sequence for any lock in Gothic 1 Remake.">
+
+    <!-- ═══ STRUCTURED DATA (Google rich results) ════════════════════════ -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Gothic Lock Picker",
+      "url": "https://gothic-lock-picker.vercel.app/",
+      "description": "Optimal lock picking solver for Gothic 1 Remake. Uses BFS pathfinding to find the shortest move sequence for any pin and latch configuration.",
+      "applicationCategory": "GameApplication",
+      "operatingSystem": "Any",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      }
+    }
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <!-- ═══ STATIC FALLBACK — Google reads this before JS loads ══════════ -->
+    <div id="root">
+      <h1>Gothic Lock Picker</h1>
+      <p>
+        A free lock picking solver for <strong>Gothic 1 Remake</strong>.
+        Enter your starting pin positions (P1–P8) and latch dependencies,
+        then hit Solve to get the shortest possible move sequence using BFS pathfinding.
+        Works on desktop and mobile.
+      </p>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
