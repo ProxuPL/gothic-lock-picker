@@ -25,7 +25,7 @@ function useWindowWidth() {
   return w;
 }
 
-// ─── ENGINE (main thread — step reconstruction after solve) ──────────────────
+// ─── ENGINE ───────────────────────────────────────────────────────────────────
 
 function buildMoves(depMatrix, n) {
   const moves = [];
@@ -55,87 +55,49 @@ function applyMove(state, move, n) {
   return next;
 }
 
-// ─── WEB WORKER (inline Blob) ─────────────────────────────────────────────────
-// The BFS runs off the main thread so Android never freezes.
+// Encode pin state as a single integer (each pin 1-7 fits in 3 bits, 8 pins = 24 bits).
+// ~2× faster than string join/compare for Map keys.
+function stateToInt(s) {
+  let v = 0;
+  for (let i = 0; i < s.length; i++) v |= (s[i] << (i * 3));
+  return v;
+}
 
-const WORKER_SRC = `
-  function buildMoves(depMatrix, n) {
-    const moves = [];
-    for (let z = 0; z < n; z++) {
-      for (const dir of [-1, +1]) {
-        moves.push({ label: "L"+(z+1)+" "+(dir===-1?"RIGHT":"LEFT"), z, dir, depMatrix });
+function bfs(start, goal, depMatrix, n) {
+  const goalInt  = stateToInt(goal);
+  const startInt = stateToInt(start);
+  if (startInt === goalInt) return { path: [], visitedCount: 1 };
+
+  const moves   = buildMoves(depMatrix, n);
+  // visited: stateInt → parentInt (-1 for start)
+  const visited = new Map([[startInt, -1]]);
+  const prevMv  = new Map([[startInt, -1]]);
+  const queue   = [start];
+  const qInt    = [startInt];
+  let   head    = 0;  // pointer into queue — avoids O(n) array.shift()
+
+  while (head < queue.length) {
+    const state  = queue[head];
+    const curInt = qInt[head];
+    head++;
+    for (let mi = 0; mi < moves.length; mi++) {
+      const next = applyMove(state, moves[mi], n);
+      if (!next) continue;
+      const key = stateToInt(next);
+      if (visited.has(key)) continue;
+      visited.set(key, curInt);
+      prevMv.set(key, mi);
+      if (key === goalInt) {
+        const path = [];
+        let k = key;
+        while (prevMv.get(k) !== -1) { path.unshift(prevMv.get(k)); k = visited.get(k); }
+        return { path, visitedCount: visited.size };
       }
+      queue.push(next);
+      qInt.push(key);
     }
-    return moves;
   }
-
-  function applyMove(state, move, n) {
-    const { z, dir, depMatrix } = move;
-    const affected = [[z, dir]];
-    for (let p = 0; p < n; p++) {
-      if (p === z) continue;
-      const rel = depMatrix[z][p];
-      if (!rel) continue;
-      affected.push([p, rel === "+" ? dir : -dir]);
-    }
-    for (const [pin, d] of affected) {
-      const v = state[pin] + d;
-      if (v < 1 || v > 7) return null;
-    }
-    const next = [...state];
-    for (const [pin, d] of affected) next[pin] = state[pin] + d;
-    return next;
-  }
-
-  function stateKey(s) { return s.join(","); }
-
-  function bfs(start, goal, depMatrix, n) {
-    const goalKey  = stateKey(goal);
-    const startKey = stateKey(start);
-    if (startKey === goalKey) return { path: [], visitedCount: 1 };
-
-    const moves   = buildMoves(depMatrix, n);
-    const visited = new Map([[startKey, null]]);
-    const prevMove = new Map();
-    const queue   = [start];
-
-    while (queue.length > 0) {
-      const state  = queue.shift();
-      const curKey = stateKey(state);
-      for (let mi = 0; mi < moves.length; mi++) {
-        const next = applyMove(state, moves[mi], n);
-        if (!next) continue;
-        const key = stateKey(next);
-        if (visited.has(key)) continue;
-        visited.set(key, curKey);
-        prevMove.set(key, mi);
-        if (key === goalKey) {
-          const path = [];
-          let k = key;
-          while (prevMove.has(k)) { path.unshift(prevMove.get(k)); k = visited.get(k); }
-          return { path, visitedCount: visited.size };
-        }
-        queue.push(next);
-      }
-    }
-    return { path: null, visitedCount: visited.size };
-  }
-
-  self.onmessage = function(e) {
-    const { start, goal, depMatrix, n } = e.data;
-    try {
-      const result = bfs(start, goal, depMatrix, n);
-      self.postMessage({ ok: true, ...result });
-    } catch(err) {
-      self.postMessage({ ok: false, error: err.message });
-    }
-  };
-`;
-
-function createSolverWorker() {
-  const blob = new Blob([WORKER_SRC], { type: "application/javascript" });
-  const url  = URL.createObjectURL(blob);
-  return new Worker(url);
+  return { path: null, visitedCount: visited.size };
 }
 
 // ─── COMPRESSION ──────────────────────────────────────────────────────────────
@@ -319,47 +281,31 @@ export default function GothicLockPicker() {
 
   const solve = useCallback(() => {
     setSolving(true); setError(null); setResult(null);
-
-    const n      = latchCount;
-    const start  = startVals.slice(0, n);
-    const goal   = Array(n).fill(4);
-    const worker = createSolverWorker();
-
-    worker.onmessage = (e) => {
-      worker.terminate();
-      const { ok, path, visitedCount, error: workerErr } = e.data;
-      if (!ok) {
-        setError("Error: " + workerErr);
-        setSolving(false);
-        return;
-      }
-      if (path === null) {
-        setError(`Goal (${goal.join(",")}) is unreachable from this starting position with the current dependencies. Explored ${visitedCount} unique states.`);
-      } else if (path.length === 0) {
-        setError("Pins are already at position 4. Lock is open!");
-      } else {
-        // Reconstruct steps on main thread (fast — just replaying known path)
+    setTimeout(() => {
+      try {
+        const n     = latchCount;
+        const start = startVals.slice(0, n);
+        const goal  = Array(n).fill(4);
         const moves = buildMoves(depMatrix, n);
-        const steps = [];
-        let state   = [...start];
-        for (const mi of path) {
-          const next = applyMove(state, moves[mi], n);
-          steps.push({ moveLabel: moves[mi].label, prev: [...state], state: [...next] });
-          state = next;
+        const { path, visitedCount } = bfs(start, goal, depMatrix, n);
+        if (path === null) {
+          setError(`Goal (${goal.join(",")}) is unreachable from this starting position with the current dependencies. Explored ${visitedCount} unique states.`);
+        } else if (path.length === 0) {
+          setError("Pins are already at position 4. Lock is open!");
+        } else {
+          const steps = [];
+          let state = [...start];
+          for (const mi of path) {
+            const next = applyMove(state, moves[mi], n);
+            steps.push({ moveLabel: moves[mi].label, prev: [...state], state: [...next] });
+            state = next;
+          }
+          const blocks = compressMoves(path, moves);
+          setResult({ steps, blocks, visitedCount });
         }
-        const blocks = compressMoves(path, moves);
-        setResult({ steps, blocks, visitedCount });
-      }
+      } catch(e) { setError("Error: " + e.message); }
       setSolving(false);
-    };
-
-    worker.onerror = (e) => {
-      worker.terminate();
-      setError("Worker error: " + e.message);
-      setSolving(false);
-    };
-
-    worker.postMessage({ start, goal, depMatrix, n });
+    }, 30);
   }, [startVals, depMatrix, latchCount]);
 
   const sec      = { padding:"16px", background:"#0d1520", borderRadius:10, border:"1px solid #1e2d45", marginBottom:16 };
