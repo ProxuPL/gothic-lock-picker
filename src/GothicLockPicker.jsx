@@ -202,20 +202,11 @@ function DepCell({ value, onChange, isSelf, cellW }) {
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// Hide browser's native number-input spin buttons
-const _pinInputStyle = typeof document !== "undefined" && (() => {
-  const s = document.createElement("style");
-  s.textContent = `
-    input[type=number]::-webkit-inner-spin-button,
-    input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
-    input[type=number] { -moz-appearance:textfield; }
-  `;
-  document.head.appendChild(s);
-})();
 
 export default function GothicLockPicker() {
   const [latchCount, setLatchCount] = useState(DEFAULT_LATCH_COUNT);
   const [startVals,  setStartVals]  = useState([...DEFAULT_START]);
+  const [inputDrafts, setInputDrafts] = useState(() => DEFAULT_START.map(String));
   const [depMatrix,  setDepMatrix]  = useState(DEFAULT_DEP_MATRIX.map(r=>[...r]));
   const [result,     setResult]     = useState(null);
   const [error,      setError]      = useState(null);
@@ -253,9 +244,28 @@ export default function GothicLockPicker() {
     setResult(null); setError(null);
   }, []);
 
-  const updateStart = (i, v) => {
-    const next = [...startVals]; next[i] = Number(v);
-    setStartVals(next); setResult(null); setError(null);
+  const updateStart = (i, numVal) => {
+    const next = [...startVals]; next[i] = numVal;
+    setStartVals(next);
+    setInputDrafts(prev => { const d = [...prev]; d[i] = String(numVal); return d; });
+    setResult(null); setError(null);
+  };
+
+  const handleDraftChange = (i, raw) => {
+    // Always update the draft so typing feels instant
+    setInputDrafts(prev => { const d = [...prev]; d[i] = raw; return d; });
+    const n = parseInt(raw, 10);
+    if (!isNaN(n) && n >= 1 && n <= 7) {
+      const next = [...startVals]; next[i] = n;
+      setStartVals(next); setResult(null); setError(null);
+    }
+  };
+
+  const handleDraftBlur = (i) => {
+    // On blur: if draft is invalid, snap back to current valid value
+    const n = parseInt(inputDrafts[i], 10);
+    const clamped = (!isNaN(n) && n >= 1 && n <= 7) ? n : startVals[i];
+    updateStart(i, clamped);
   };
 
   const solve = useCallback(() => {
@@ -368,13 +378,13 @@ export default function GothicLockPicker() {
                     >−</button>
 
                     <input
-                      type="number"
-                      min={1} max={7}
-                      value={val}
-                      onChange={e => {
-                        const n = parseInt(e.target.value, 10);
-                        if (!isNaN(n) && n >= 1 && n <= 7) updateStart(i, n);
-                      }}
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[1-7]"
+                      value={inputDrafts[i]}
+                      onChange={e => handleDraftChange(i, e.target.value)}
+                      onBlur={() => handleDraftBlur(i)}
+                      onFocus={e => e.target.select()}
                       style={{
                         width: isMobile ? 44 : 34,
                         height: isMobile ? 36 : 30,
@@ -387,8 +397,6 @@ export default function GothicLockPicker() {
                         borderRadius:6,
                         color: isGoal?"#5cba6a":col,
                         outline:"none",
-                        MozAppearance:"textfield",
-                        WebkitAppearance:"none",
                         padding:0,
                       }}
                     />
