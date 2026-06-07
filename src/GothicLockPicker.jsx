@@ -1,25 +1,22 @@
 import { useState, useCallback } from "react";
 
-const DEFAULT_DEP_MATRIX = [
-  [null, null, null, null, null, null],
-  [null, null, null, null, null, null],
-  [null, null, null, null, null, null],
-  [null, null, null, null, null, null],
-  [null, null, null, null, null, null],
-  [null, null, null, null, null, null],
+const MAX_LATCHES         = 8;
+const DEFAULT_LATCH_COUNT = 6;
+
+const DEFAULT_DEP_MATRIX = Array.from({ length: MAX_LATCHES }, () => Array(MAX_LATCHES).fill(null));
+const DEFAULT_START       = [2, 3, 4, 6, 6, 4, 4, 4];
+
+const PIN_COLORS = [
+  "#e05c5c", "#e08c3a", "#d4c84a", "#5cba6a",
+  "#4a9de0", "#9b6ae0", "#e05c9b", "#5ce0c8",
 ];
-
-const DEFAULT_START = [2, 3, 4, 6, 6, 4];
-const DEFAULT_GOAL  = [4, 4, 4, 4, 4, 4];
-
-const PIN_COLORS = ["#e05c5c","#e08c3a","#d4c84a","#5cba6a","#4a9de0","#9b6ae0"];
 const CELL_W = 46;
 
 // ─── ENGINE ───────────────────────────────────────────────────────────────────
 
-function buildMoves(depMatrix) {
+function buildMoves(depMatrix, n) {
   const moves = [];
-  for (let z = 0; z < 6; z++) {
+  for (let z = 0; z < n; z++) {
     for (const dir of [-1, +1]) {
       moves.push({ label: `L${z+1} ${dir===-1?"RIGHT":"LEFT"}`, z, dir, depMatrix });
     }
@@ -27,10 +24,10 @@ function buildMoves(depMatrix) {
   return moves;
 }
 
-function applyMove(state, move) {
+function applyMove(state, move, n) {
   const { z, dir, depMatrix } = move;
   const affected = [[z, dir]];
-  for (let p = 0; p < 6; p++) {
+  for (let p = 0; p < n; p++) {
     if (p === z) continue;
     const rel = depMatrix[z][p];
     if (!rel) continue;
@@ -47,12 +44,12 @@ function applyMove(state, move) {
 
 function stateKey(s) { return s.join(","); }
 
-function bfs(start, goal, depMatrix) {
+function bfs(start, goal, depMatrix, n) {
   const goalKey  = stateKey(goal);
   const startKey = stateKey(start);
   if (startKey === goalKey) return { path: [], visitedCount: 1 };
 
-  const moves    = buildMoves(depMatrix);
+  const moves    = buildMoves(depMatrix, n);
   const visited  = new Map([[startKey, null]]);
   const prevMove = new Map();
   const queue    = [start];
@@ -61,7 +58,7 @@ function bfs(start, goal, depMatrix) {
     const state  = queue.shift();
     const curKey = stateKey(state);
     for (let mi = 0; mi < moves.length; mi++) {
-      const next = applyMove(state, moves[mi]);
+      const next = applyMove(state, moves[mi], n);
       if (!next) continue;
       const key = stateKey(next);
       if (visited.has(key)) continue;
@@ -82,7 +79,6 @@ function bfs(start, goal, depMatrix) {
 // ─── COMPRESSION: consecutive identical (pin + direction) → block ─────────────
 
 function compressMoves(pathIndices, moves) {
-  // Convert indices to objects { z, isLeft }
   const raw = pathIndices.map(i => ({ z: moves[i].z, isLeft: moves[i].dir === 1 }));
   const blocks = [];
   let i = 0;
@@ -163,13 +159,18 @@ function DepCell({ value, onChange, isSelf }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 export default function GothicLockPicker() {
-  const [startVals, setStartVals] = useState([...DEFAULT_START]);
-  const [depMatrix, setDepMatrix] = useState(DEFAULT_DEP_MATRIX.map(r=>[...r]));
-  const [result,    setResult]    = useState(null);
-  const [error,     setError]     = useState(null);
-  const [solving,   setSolving]   = useState(false);
+  const [latchCount, setLatchCount] = useState(DEFAULT_LATCH_COUNT);
+  const [startVals,  setStartVals]  = useState([...DEFAULT_START]);
+  const [depMatrix,  setDepMatrix]  = useState(DEFAULT_DEP_MATRIX.map(r=>[...r]));
+  const [result,     setResult]     = useState(null);
+  const [error,      setError]      = useState(null);
+  const [solving,    setSolving]    = useState(false);
 
-  const goal = DEFAULT_GOAL;
+  const changeLatchCount = (delta) => {
+    setLatchCount(prev => Math.max(3, Math.min(8, prev + delta)));
+    setResult(null);
+    setError(null);
+  };
 
   const setDep = useCallback((z, p, val) => {
     setDepMatrix(prev => { const next = prev.map(r=>[...r]); next[z][p] = val; return next; });
@@ -185,17 +186,20 @@ export default function GothicLockPicker() {
     setSolving(true); setError(null); setResult(null);
     setTimeout(() => {
       try {
-        const moves = buildMoves(depMatrix);
-        const { path, visitedCount } = bfs(startVals, goal, depMatrix);
+        const n     = latchCount;
+        const start = startVals.slice(0, n);
+        const goal  = Array(n).fill(4);
+        const moves = buildMoves(depMatrix, n);
+        const { path, visitedCount } = bfs(start, goal, depMatrix, n);
         if (path === null) {
-          setError(`Goal (4,4,4,4,4,4) is unreachable from this starting position with the current dependencies. Explored ${visitedCount} unique states.`);
+          setError(`Goal (${goal.join(",")}) is unreachable from this starting position with the current dependencies. Explored ${visitedCount} unique states.`);
         } else if (path.length === 0) {
           setError("Pins are already at position 4. Lock is open!");
         } else {
           const steps = [];
-          let state = [...startVals];
+          let state = [...start];
           for (const mi of path) {
-            const next = applyMove(state, moves[mi]);
+            const next = applyMove(state, moves[mi], n);
             steps.push({ moveLabel: moves[mi].label, prev: [...state], state: [...next] });
             state = next;
           }
@@ -205,10 +209,12 @@ export default function GothicLockPicker() {
       } catch(e) { setError("Error: " + e.message); }
       setSolving(false);
     }, 30);
-  }, [startVals, depMatrix, goal]);
+  }, [startVals, depMatrix, latchCount]);
 
-  const sec = { padding:"16px", background:"#0d1520", borderRadius:10, border:"1px solid #1e2d45", marginBottom:16 };
+  const sec      = { padding:"16px", background:"#0d1520", borderRadius:10, border:"1px solid #1e2d45", marginBottom:16 };
   const secTitle = { color:"#7ab8f5", fontWeight:700, fontSize:11, letterSpacing:"1.5px", marginBottom:12, textTransform:"uppercase" };
+
+  const latches = Array.from({ length: latchCount }, (_, i) => i);
 
   return (
     <div style={{ minHeight:"100vh", background:"linear-gradient(160deg,#070b12 0%,#0c1420 60%,#070b12 100%)", color:"#c8d4e8", fontFamily:"'JetBrains Mono','Fira Code','Courier New',monospace", padding:"20px 14px" }}>
@@ -224,23 +230,65 @@ export default function GothicLockPicker() {
         </div>
         <div style={{ height:1, marginBottom:20, background:"linear-gradient(90deg,#e05c5c44,#9b6ae044,transparent)" }}/>
 
+        {/* LATCH COUNT CONTROL */}
+        <div style={sec}>
+          <div style={secTitle}>🔩 Number of latches</div>
+          <div style={{ display:"flex", alignItems:"center", gap:16 }}>
+            <button
+              onClick={() => changeLatchCount(-1)}
+              disabled={latchCount <= 3}
+              style={{
+                width:38, height:38, borderRadius:8,
+                border:`1.5px solid ${latchCount <= 3 ? "#1a2a3a" : "#2d4a6a"}`,
+                background: latchCount <= 3 ? "#0a0e16" : "#0d1a2e",
+                color: latchCount <= 3 ? "#2a3a4a" : "#7ab8f5",
+                fontWeight:800, fontSize:22, lineHeight:1,
+                cursor: latchCount <= 3 ? "not-allowed" : "pointer",
+                display:"flex", alignItems:"center", justifyContent:"center",
+                fontFamily:"inherit", transition:"all 0.15s",
+              }}
+            >−</button>
+
+            <div style={{ textAlign:"center", minWidth:64 }}>
+              <div style={{ fontSize:36, fontWeight:800, color:"#e8f0ff", lineHeight:1 }}>{latchCount}</div>
+              <div style={{ fontSize:9, color:"#3a5a7a", letterSpacing:"1px", marginTop:3 }}>LATCHES (3–8)</div>
+            </div>
+
+            <button
+              onClick={() => changeLatchCount(+1)}
+              disabled={latchCount >= 8}
+              style={{
+                width:38, height:38, borderRadius:8,
+                border:`1.5px solid ${latchCount >= 8 ? "#1a2a3a" : "#2d4a6a"}`,
+                background: latchCount >= 8 ? "#0a0e16" : "#0d1a2e",
+                color: latchCount >= 8 ? "#2a3a4a" : "#7ab8f5",
+                fontWeight:800, fontSize:22, lineHeight:1,
+                cursor: latchCount >= 8 ? "not-allowed" : "pointer",
+                display:"flex", alignItems:"center", justifyContent:"center",
+                fontFamily:"inherit", transition:"all 0.15s",
+              }}
+            >+</button>
+
+            <div style={{ flex:1, padding:"8px 12px", background:"#080c14", borderRadius:6, border:"1px solid #141e2e", fontSize:10, color:"#4a6a8a", lineHeight:1.6 }}>
+              Changing latch count resets the solution. Dependencies set for inactive latches are preserved.
+            </div>
+          </div>
+        </div>
+
         {/* STARTING POSITIONS */}
         <div style={sec}>
           <div style={secTitle}>📍 Starting pin positions</div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(6,1fr)", gap:8 }}>
-            {startVals.map((v,i) => (
+          <div style={{ display:"grid", gridTemplateColumns:`repeat(${latchCount},1fr)`, gap:8 }}>
+            {latches.map(i => (
               <div key={i} style={{ textAlign:"center" }}>
                 <div style={{ color:PIN_COLORS[i], fontWeight:700, fontSize:11, marginBottom:4 }}>P{i+1}</div>
-                <div style={{ fontSize:22, fontWeight:800, marginBottom:6, color:v===4?"#5cba6a":PIN_COLORS[i] }}>{v}</div>
-                <input type="range" min={1} max={7} value={v} onChange={e=>updateStart(i,e.target.value)} style={{ width:"100%", accentColor:PIN_COLORS[i], cursor:"pointer" }} />
+                <div style={{ fontSize:22, fontWeight:800, marginBottom:6, color:startVals[i]===4?"#5cba6a":PIN_COLORS[i] }}>{startVals[i]}</div>
+                <input type="range" min={1} max={7} value={startVals[i]} onChange={e=>updateStart(i,e.target.value)} style={{ width:"100%", accentColor:PIN_COLORS[i], cursor:"pointer" }} />
                 <div style={{ display:"flex", justifyContent:"space-between", fontSize:9, color:"#3a4a5a", marginTop:2 }}>
-                  <span>1</span><span style={{color:v===4?"#5cba6a":"#4a5a6a"}}>4</span><span>7</span>
+                  <span>1</span><span style={{color:startVals[i]===4?"#5cba6a":"#4a5a6a"}}>4</span><span>7</span>
                 </div>
               </div>
             ))}
-          </div>
-          <div style={{ marginTop:14, padding:"9px 12px", background:"#080c14", borderRadius:6, border:"1px solid #1e2d45", fontSize:11, color:"#5a7a9a", lineHeight:1.6 }}>
-            💡 <span style={{ color:"#7ab8f5", fontWeight:700 }}>5-latch lock?</span> Set <span style={{ color:PIN_COLORS[5], fontWeight:700 }}>L6</span> to position <span style={{ color:"#5cba6a", fontWeight:700 }}>4</span> and remove all dependencies for L6 in the matrix below — the solver will ignore it.
           </div>
         </div>
 
@@ -261,16 +309,16 @@ export default function GothicLockPicker() {
               <thead>
                 <tr>
                   <th style={{ padding:"4px 10px 8px 4px", color:"#2a3a4a", fontSize:10, textAlign:"left", whiteSpace:"nowrap" }}>affected L ↓ · move X →</th>
-                  {[0,1,2,3,4,5].map(p=>(
+                  {latches.map(p=>(
                     <th key={p} style={{ width:CELL_W, textAlign:"center", padding:"4px 0 8px", color:PIN_COLORS[p], fontWeight:800, fontSize:13 }}>X{p+1}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {[0,1,2,3,4,5].map(z=>(
+                {latches.map(z=>(
                   <tr key={z}>
                     <td style={{ padding:"0 12px 0 4px", color:PIN_COLORS[z], fontWeight:700, fontSize:12, whiteSpace:"nowrap" }}>L{z+1}</td>
-                    {[0,1,2,3,4,5].map(p=>(
+                    {latches.map(p=>(
                       <td key={p} style={{ padding:0 }}>
                         <DepCell value={depMatrix[p][z]} isSelf={z===p} onChange={val=>setDep(p,z,val)} />
                       </td>
@@ -282,9 +330,9 @@ export default function GothicLockPicker() {
           </div>
           <div style={{ marginTop:12, padding:"10px 12px", background:"#080c14", borderRadius:6, border:"1px solid #141e2e" }}>
             <div style={{ color:"#3a4a5a", fontSize:10, marginBottom:6, letterSpacing:"0.5px" }}>DEPENDENCIES (text):</div>
-            {[0,1,2,3,4,5].map(z=>{
+            {latches.map(z=>{
               const deps=[];
-              for(let p=0;p<6;p++){
+              for(let p=0;p<latchCount;p++){
                 if(p===z)continue;
                 const v=depMatrix[z][p];
                 if(v)deps.push(`L${p+1} ${v==="+"?"same":"opposite"}`);
@@ -339,7 +387,7 @@ export default function GothicLockPicker() {
                 <table style={{ width:"100%", borderCollapse:"collapse", fontSize:12 }}>
                   <thead>
                     <tr>
-                      {["#","Move","L1","L2","L3","L4","L5","L6"].map((h,i)=>(
+                      {["#","Move",...latches.map(i=>`L${i+1}`)].map((h,i)=>(
                         <th key={h} style={{ padding:"8px 8px", background:"#0d1520", color:i>=2?PIN_COLORS[i-2]:"#5a6a8a", fontWeight:i>=2?800:600, textAlign:i>=2?"center":"left", borderBottom:"2px solid #1e2d45", whiteSpace:"nowrap", fontSize:i>=2?13:11 }}>{h}</th>
                       ))}
                     </tr>
@@ -348,7 +396,7 @@ export default function GothicLockPicker() {
                     <tr style={{ background:"#080c14" }}>
                       <td style={{ padding:"7px 8px", color:"#3a4a5a", borderBottom:"1px solid #141e2e" }}>0</td>
                       <td style={{ padding:"7px 8px", color:"#3a4a5a", fontStyle:"italic", borderBottom:"1px solid #141e2e" }}>START</td>
-                      {startVals.map((v,i)=>(
+                      {startVals.slice(0, latchCount).map((v,i)=>(
                         <td key={i} style={{ padding:"7px 8px", textAlign:"center", color:v===4?"#5cba6a":PIN_COLORS[i], fontWeight:v===4?800:500, borderBottom:"1px solid #141e2e" }}>{v}</td>
                       ))}
                     </tr>
